@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>নোট এপস সহ সময় ট্র্যাকার</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali&display=swap " rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans Bengali', sans-serif;
+      background-color: #f4f4f4;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .note-form, .folder-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input[type="text"], textarea {
+      padding: 10px;
+      font-size: 16px;
+    }
+    button {
+      padding: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+    }
+    .task-list, .folder-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .task-item, .folder-item {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    .task-controls, .folder-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .edit-section {
+      margin-top: 10px;
+    }
+    .edit-section input,
+    .edit-section textarea {
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+<h1>নোট এপস সহ সময় ট্র্যাকার</h1>
+
+<div class="folder-form">
+  <input type="text" id="folderName" placeholder="ফোল্ডারের নাম লিখুন..." />
+  <button onclick="createFolder()">নতুন ফোল্ডার তৈরি করুন</button>
+</div>
+
+<div class="note-form">
+  <input type="text" id="taskTitle" placeholder="নোটের শিরোনাম" />
+  <textarea id="taskNote" rows="3" placeholder="নোট লিখুন..."></textarea>
+  <select id="folderSelect"></select>
+  <button onclick="addTask()">নোট যোগ করুন</button>
+</div>
+
+<div class="folder-list" id="folderList"></div>
+
+<script>
+  let folders = JSON.parse(localStorage.getItem("folders")) || {};
+
+  function formatTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor((totalSeconds / 3600));
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours} ঘণ্টা ${minutes} মিনিট ${seconds} সেকেন্ড`;
+  }
+
+  function createFolder() {
+    const name = document.getElementById("folderName").value.trim();
+    if (name && !folders[name]) {
+      folders[name] = [];
+      saveFolders();
+      renderFolders();
+      renderFolderSelect();
+      document.getElementById("folderName").value = "";
+    }
+  }
+
+  function deleteFolder(name) {
+    if (confirm(`আপনি কি "${name}" ফোল্ডারটি মুছে ফেলতে চান?`)) {
+      delete folders[name];
+      saveFolders();
+      renderFolders();
+      renderFolderSelect();
+    }
+  }
+
+  function addTask() {
+    const title = document.getElementById("taskTitle").value.trim();
+    const note = document.getElementById("taskNote").value.trim();
+    const folder = document.getElementById("folderSelect").value;
+
+    if (title && note && folder) {
+      folders[folder].push({
+        id: Date.now(),
+        title,
+        note,
+        startTime: null,
+        pausedTime: 0,
+        running: false
+      });
+      saveFolders();
+      renderFolders();
+      document.getElementById("taskTitle").value = "";
+      document.getElementById("taskNote").value = "";
+    }
+  }
+
+  function deleteNote(folder, id) {
+    folders[folder] = folders[folder].filter(n => n.id !== id);
+    saveFolders();
+    renderFolders();
+  }
+
+  function toggleTimer(folder, id) {
+    const note = folders[folder].find(n => n.id === id);
+    if (note.running) {
+      note.pausedTime = Date.now() - note.startTime;
+      note.running = false;
+    } else {
+      note.startTime = Date.now() - note.pausedTime;
+      note.running = true;
+    }
+    saveFolders();
+    renderFolders();
+  }
+
+  function resetTimer(folder, id) {
+    const note = folders[folder].find(n => n.id === id);
+    note.startTime = null;
+    note.pausedTime = 0;
+    note.running = false;
+    saveFolders();
+    renderFolders();
+  }
+
+  function editNote(folder, id) {
+    const note = folders[folder].find(n => n.id === id);
+    const newTitle = prompt("শিরোনাম আপডেট করুন:", note.title);
+    const newNote = prompt("নোট আপডেট করুন:", note.note);
+
+    if (newTitle !== null && newNote !== null) {
+      note.title = newTitle.trim() || note.title;
+      note.note = newNote.trim() || note.note;
+      saveFolders();
+      renderFolders();
+    }
+  }
+
+  function saveFolders() {
+    localStorage.setItem("folders", JSON.stringify(folders));
+  }
+
+  function renderFolders() {
+    const list = document.getElementById("folderList");
+    list.innerHTML = "";
+    for (let name in folders) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "folder-item";
+      wrapper.innerHTML = `<strong>${name}</strong>
+        <div class="folder-controls">
+          <button onclick="deleteFolder('${name}')">ফোল্ডার মুছুন</button>
+        </div>`;
+      folders[name].forEach(note => {
+        const elapsed = note.running ? Date.now() - note.startTime : note.pausedTime;
+        const time = formatTime(elapsed);
+        const noteDiv = document.createElement("div");
+        noteDiv.className = "task-item";
+        noteDiv.innerHTML = `
+          <strong>${note.title}</strong><br/>
+          <p>${note.note}</p>
+          <div class="task-controls">
+            <span>সময়: ${time}</span>
+            <button onclick="toggleTimer('${name}', ${note.id})">${note.running ? "থামান" : "চালু করুন"}</button>
+            <button onclick="resetTimer('${name}', ${note.id})">রিসেট</button>
+            <button onclick="editNote('${name}', ${note.id})">এডিট</button>
+            <button onclick="deleteNote('${name}', ${note.id})">নোট মুছুন</button>
+          </div>
+        `;
+        wrapper.appendChild(noteDiv);
+      });
+      list.appendChild(wrapper);
+    }
+  }
+
+  function renderFolderSelect() {
+    const select = document.getElementById("folderSelect");
+    select.innerHTML = "";
+    for (let name in folders) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    renderFolders();
+    renderFolderSelect();
+    setInterval(renderFolders, 1000);
+  });
+</script>
+
+</body>
+</html>
